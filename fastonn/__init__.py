@@ -4,3 +4,4 @@ from .OpBlock import OpBlock
 from .trainer import Trainer
 from .osl import *
 from . import utils
+from .SelfONN import *
