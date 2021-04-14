@@ -5,21 +5,32 @@ import numpy as np
 from pathlib import Path
 from math import factorial
 import matplotlib.pyplot as plt
+import collections
+from itertools import repeat
 
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable):
+            return x
+        return tuple(repeat(x, n))
+    return parse
+
+_pair = _ntuple(2)
 
 class SelfONNLayer(nn.Module):
-    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,groups=1,bias=True,q=1):
+    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,groups=1,bias=True,q=1,mode='fast'):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.dilation = dilation
+        self.kernel_size = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _pair(padding)
+        self.dilation = _pair(dilation)
         self.groups = groups
         self.q = q
+        self.mode = mode # 'low_mem'
         
-        self.weights = nn.Parameter(torch.Tensor(out_channels,q*in_channels,kernel_size,kernel_size)) # Q x C x K x D
+        self.weights = nn.Parameter(torch.Tensor(out_channels,q*in_channels,*self.kernel_size)) # Q x C x K x D
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:
@@ -43,6 +54,21 @@ class SelfONNLayer(nn.Module):
 
     def forward(self,x):
         # Input to layer
-        x = torch.cat([(x**i) for i in range(1,self.q+1)],dim=1)
-        x = torch.nn.functional.conv2d(x,self.weights,bias=self.bias,padding=self.padding,dilation=self.dilation)        
+        if self.mode=='fast':
+            x = torch.cat([(x**i) for i in range(1,self.q+1)],dim=1)
+            x = torch.nn.functional.conv2d(x,self.weights,bias=self.bias,padding=self.padding,dilation=self.dilation,groups=self.groups)
+        
+        elif self.mode == 'low_mem':
+            y = x
+            x = torch.nn.functional.conv2d(y,self.weights[:,:self.in_channels,:,:],bias=None,padding=self.padding,dilation=self.dilation)
+            for q in range(1,self.q): 
+                x += torch.nn.functional.conv2d(
+                    y**(q+1),
+                    self.weights[:,(q*self.in_channels):((q+1)*self.in_channels),:,:],
+                    bias=None,
+                    padding=self.padding,
+                    dilation=self.dilation,
+                    groups=self.groups
+            )
+            if self.bias is not None: x += self.bias[None,:,None,None]
         return x
