@@ -18,7 +18,7 @@ def _ntuple(n):
 _pair = _ntuple(2)
 
 class SelfONNLayer(nn.Module):
-    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,groups=1,bias=True,q=1,mode='fast'):
+    def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,groups=1,bias=True,q=1,mode='fast',dropout=None):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -29,6 +29,7 @@ class SelfONNLayer(nn.Module):
         self.groups = groups
         self.q = q
         self.mode = mode # 'low_mem'
+        self.dropout = nn.Dropout2d(dropout) if dropout is not None else None
         
         self.weights = nn.Parameter(torch.Tensor(out_channels,q*in_channels,*self.kernel_size)) # Q x C x K x D
         if bias:
@@ -56,6 +57,7 @@ class SelfONNLayer(nn.Module):
         # Input to layer
         if self.mode=='fast':
             x = torch.cat([(x**i) for i in range(1,self.q+1)],dim=1)
+            if self.dropout is not None: x = self.dropout(x)
             x = torch.nn.functional.conv2d(x,self.weights,bias=self.bias,padding=self.padding,dilation=self.dilation,groups=self.groups)
         
         elif self.mode == 'low_mem':
@@ -63,7 +65,7 @@ class SelfONNLayer(nn.Module):
             x = torch.nn.functional.conv2d(y,self.weights[:,:self.in_channels,:,:],bias=None,padding=self.padding,dilation=self.dilation)
             for q in range(1,self.q): 
                 x += torch.nn.functional.conv2d(
-                    y**(q+1),
+                    y**(q+1) if self.dropout is None else self.dropout(y**q+1),
                     self.weights[:,(q*self.in_channels):((q+1)*self.in_channels),:,:],
                     bias=None,
                     padding=self.padding,
@@ -71,4 +73,8 @@ class SelfONNLayer(nn.Module):
                     groups=self.groups
             )
             if self.bias is not None: x += self.bias[None,:,None,None]
+
+        else:
+            print(self.mode)
+            raise NotImplementedError
         return x
