@@ -68,6 +68,7 @@ class SelfONNLayer(nn.Module):
                     y**(q+1) if self.dropout is None else self.dropout(y**q+1),
                     self.weights[:,(q*self.in_channels):((q+1)*self.in_channels),:,:],
                     bias=None,
+                    stride=self.stride,
                     padding=self.padding,
                     dilation=self.dilation,
                     groups=self.groups
