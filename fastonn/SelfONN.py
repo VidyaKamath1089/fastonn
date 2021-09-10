@@ -58,7 +58,7 @@ class SelfONNLayer(nn.Module):
         if self.mode=='fast':
             x = torch.cat([(x**i) for i in range(1,self.q+1)],dim=1)
             if self.dropout is not None: x = self.dropout(x)
-            x = torch.nn.functional.conv2d(x,self.weights,bias=self.bias,padding=self.padding,dilation=self.dilation,groups=self.groups)
+            x = torch.nn.functional.conv2d(x,self.weights,bias=self.bias,stride=self.stride,padding=self.padding,dilation=self.dilation,groups=self.groups)
         
         elif self.mode == 'low_mem':
             y = x
@@ -68,6 +68,7 @@ class SelfONNLayer(nn.Module):
                     y**(q+1) if self.dropout is None else self.dropout(y**q+1),
                     self.weights[:,(q*self.in_channels):((q+1)*self.in_channels),:,:],
                     bias=None,
+                    stride=self.stride,
                     padding=self.padding,
                     dilation=self.dilation,
                     groups=self.groups
